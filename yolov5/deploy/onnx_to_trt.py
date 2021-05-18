@@ -3,10 +3,6 @@
 # @Auto   : zzf-jeff
 
 import sys, os
-
-sys.path.append('./')
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 import argparse
 import tensorrt as trt
 from deploy.calibrator import Calibrator
@@ -14,7 +10,7 @@ from deploy.data_stream import CalibStream
 
 
 def onnx2trt(
-        model,
+        onnx_file_path,
         engine_file_path,
         log_level='ERROR',
         max_batch_size=1,
@@ -24,11 +20,12 @@ def onnx2trt(
         strict_type_constraints=False,
         int8_mode=False,
         calibrator_stream=None,
-        calibration_table_path=None):
+        calibration_table_path=None,
+        save_engine=False):
     """build TensorRT model from Onnx model.
 
     Args:
-        model (string or io object): Onnx model name
+        onnx_file_path (string or io object): Onnx model name
         log_level (string, default is ERROR): TensorRT logger level, now
             INTERNAL_ERROR, ERROR, WARNING, INFO, VERBOSE are support.
         max_batch_size (int, default=1): The maximum batch size which can be
@@ -67,11 +64,11 @@ def onnx2trt(
         1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
     # us parser set onnx model
     parser = trt.OnnxParser(network, logger)
-    if isinstance(model, str):
-        with open(model, 'rb') as f:
+    if isinstance(onnx_file_path, str):
+        with open(onnx_file_path, 'rb') as f:
             flag = parser.parse(f.read())
     else:
-        flag = parser.parse(model.read())
+        flag = parser.parse(onnx_file_path.read())
     if not flag:
         for error in range(parser.num_errors):
             print(parser.get_error(error))
@@ -109,13 +106,11 @@ def onnx2trt(
         # set dynamic_shape use min,opt,max shape
         # such as : (1,3,224,224),(4,3,224,224),(16,3,224,224)
         profile.set_shape(network.get_input(0).name, *dynamic_shape)
-
     else:
         for i in range(network.num_inputs):
             tensor = network.get_input(i)
             name = tensor.name
             shape = tensor.shape[1:]
-            print(tensor.shape)
             min_shape = (1,) + shape
             opt_shape = ((1 + max_batch_size) // 2,) + shape
             max_shape = (max_batch_size,) + shape
@@ -127,14 +122,14 @@ def onnx2trt(
     config.add_optimization_profile(profile)
     engine = builder.build_engine(network, config)
 
-    try:
+    if engine is None:
+        print('Failed to create the engine')
+        return None
+    print("Completed creating the engine")
+
+    if save_engine:
         with open(engine_file_path, "wb") as f:
             f.write(engine.serialize())
-        print('create engine ok')
-    except Exception as e:
-        print(e)
-        print('create engine fail')
-        os.remove(engine_file_path)
 
     return engine
 
@@ -158,9 +153,9 @@ def main():
         max_calibration_size = 500  # 校准集数量
         img_size = (3, 736, 1280)
         max_batches = max_calibration_size / batch_size
-        calib_img_dir = '/zzf/data/ocr_det_data/aiyunxiao/write_ocr_det/test/images/'
+        calib_img_dir = ''
         calibration_stream = CalibStream(batch_size, img_size, max_batches, calib_img_dir)
-        calibration_table_path = engine_output.replace('.engine', '.cache')
+        calibration_table_path = 'weights/5s_calibration.cache'
     else:
         calibration_stream = None
         calibration_table_path = None
@@ -173,7 +168,8 @@ def main():
         int8_mode=int8_mode,
         dynamic_shape=dynamic_shape,
         calibrator_stream=calibration_stream,
-        calibration_table_path=calibration_table_path
+        calibration_table_path=calibration_table_path,
+        save_engine=True
     )
 
 

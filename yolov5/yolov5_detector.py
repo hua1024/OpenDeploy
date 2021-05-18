@@ -9,44 +9,24 @@ import time
 import cv2
 import os
 from tqdm import tqdm
+from config import opt
 
 from deploy.trt_inference import TRTModel
 from utils import preprocess_img, non_max_suppression, scale_coords, xyxy2xywh, plot_one_box
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Train image classifiers model')
-    parser.add_argument('--weights', type=str, help='trt engine')
-    parser.add_argument('--img_path', type=str, help='input image path')
-    parser.add_argument('--output_path', type=str, default='output', help='output result path')
-    args = parser.parse_args()
-    return args
-
-
-def check_point(img, x1, y1, x2, y2):
-    h, w = img.shape[:2]
-    if x1 < 0:
-        x1 = 0
-    if y1 < 0:
-        y1 = 0
-    if x2 > w:
-        x2 = w
-    if y2 > h:
-        y2 = h
-    if abs(x2 - x1) > 0.7 * w:
-        x2 = w
-        x1 = 0
-    return x1, y1, x2, y2
-
-
 class Detector(object):
-    def __init__(self, engine_path, conf_thresh=0.1, iou_thresh=0.6):
+    def __init__(self, engine_path, label_path, conf_thresh=0.1, iou_thresh=0.6):
+
         super(Detector, self).__init__()
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
-        # need change , label index，nc(classes number) , anchors
-        self.names = {0: 'table'}
-        nc = 1  # classes
+
+        with open(label_path, 'r', encoding='utf-8') as f:
+            self.names = f.read().rstrip('\n').split('\n')
+
+        nc = len(self.names)
+        # anchor这里默认coco下面的，如果重新计算了，注意修改
         anchors = np.array([
             [[10, 13], [16, 30], [33, 23]],
             [[30, 61], [62, 45], [59, 119]],
@@ -97,9 +77,13 @@ class Detector(object):
         return pred
 
     def run(self, img):
-        # 嵌入部分表格检测的业务
-        res_list = []
-        img_list = []
+        '''yolov5 trt inference func
+
+        :param img: np img
+        :return:
+            dst_list : [(x1,y1,x2,y2,label,conf),...]
+        '''
+        dst_list = []
         resize_img = preprocess_img(img)
         output = self.trt.run(resize_img)
         pred = self.post_process(output)
@@ -110,13 +94,10 @@ class Detector(object):
                 for *xyxy, conf, cls in reversed(det):
                     if float('%.2f' % conf) > self.conf_thresh:
                         x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
-                        # add by lcw
-                        # x1, y1, x2, y2 = check_point(img, x1, y1, x2, y2)
                         # label is self.names[int(cls)], score is conf
-                        res_list.append((x1, y1, x2, y2))
-                        img_list.append(img[y1:y2, x1:x2])
+                        dst_list.append((x1, y1, x2, y2, self.names[int(cls)], float('%.2f' % conf)))
 
-        return res_list, img_list
+        return dst_list
 
 
 def load_img_by_path(path):
@@ -134,26 +115,32 @@ def load_img_by_path(path):
 
 
 def main():
-    args = parse_args()
-    weights = args.weights
-    img_path = args.img_path
-    output_path = args.output_path
+    engine_path = opt.engine_path
+    img_path = opt.img_path
+    output_path = opt.output_path
+    onnx_path = opt.onnx_path
+    label_path = opt.label_path
+
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
     img_list = load_img_by_path(img_path)
-    detector = Detector(engine_path=weights, conf_thresh=0.7, iou_thresh=0.6)
+
+    detector = Detector(
+        engine_path=engine_path,
+        label_path=label_path,
+        conf_thresh=opt.conf_thresh,
+        iou_thresh=opt.iou_thresh)
     # Run inference
-    # while 1:
     for file in tqdm(img_list):
         basename = os.path.basename(file)
         img = cv2.imread(file)
-        res_list, imgs_list = detector.run(img)
-        for res in res_list:
+        dst_list = detector.run(img)
+        for dst in dst_list:
             with open(os.path.join(output_path, os.path.splitext(basename)[0] + '_trt.txt'), 'a') as f:
-                f.write(('%g, ' * 4 + '\n') % (res))  # label format
-            label = '%s %.2f' % ('table', 0.0)
-            plot_one_box(res, img, label=label)
+                f.write(('%g, ' * 4 + '\n') % (dst))  # label format
+            label = '%s %.2f' % (dst[4], dst[5])
+            plot_one_box(dst[:4], img, label=label)
         cv2.imwrite(os.path.join(output_path, basename), img)
 
 

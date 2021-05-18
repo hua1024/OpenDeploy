@@ -2,7 +2,7 @@
 >标准的torch模型转trt模型代码
 >
 
-- calibrator、data_stream : trt的int8量化，未完成
+- calibrator、data_stream : trt的int8量化
 
 - onnx_to_trt : onnx格式转trt格式
 

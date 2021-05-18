@@ -9,7 +9,6 @@ try:
     import tensorrt as trt
 except:
     print('trt need env error!!!')
-    pass
 
 import re
 import numpy as np
@@ -285,6 +284,7 @@ class TRTModel():
             output_data.append(h_output.reshape(h_output.shape))
 
         self.stream.synchronize()
+
         # self.cfx.pop()
 
         return output_data
