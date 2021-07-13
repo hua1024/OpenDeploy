@@ -9,42 +9,58 @@ import time
 import cv2
 import os
 from tqdm import tqdm
-from config import opt
 
-from deploy.trt_inference import TRTModel
+from config import opt
+from deploy_trt.slow_trt_inference import TRTModel
+from deploy_trt.trt_inference import TRTModel
+from deploy_trt.onnx_inference import ONNXModel
 from utils import preprocess_img, non_max_suppression, scale_coords, xyxy2xywh, plot_one_box
 
 
 class Detector(object):
-    def __init__(self, engine_path, label_path, conf_thresh=0.1, iou_thresh=0.6):
+    """yolov5 inference code (yolov5推理代码)
+    support model type is torch/onnx/tensorrt
+
+    """
+
+    def __init__(self, model_path, label_path, anchors, conf_thresh=0.1, iou_thresh=0.6):
 
         super(Detector, self).__init__()
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
-
+        # read label dict
         with open(label_path, 'r', encoding='utf-8') as f:
             self.names = f.read().rstrip('\n').split('\n')
-
+        # init model
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self._init_model(model_path)
+        # init grid and strides to decode
         nc = len(self.names)
-        # anchor这里默认coco下面的，如果重新计算了，注意修改
-        anchors = np.array([
-            [[10, 13], [16, 30], [33, 23]],
-            [[30, 61], [62, 45], [59, 119]],
-            [[116, 90], [156, 198], [373, 326]],
-        ])
-
+        anchors = np.array(anchors)
         nl = len(anchors)
         a = anchors.copy().astype(np.float32)
         a = a.reshape(nl, -1, 2)
         self.anchor_grid = a.copy().reshape(nl, 1, -1, 1, 1, 2)
+        self.anchor_grid = torch.from_numpy(self.anchor_grid).to(self.device)
         self.no = nc + 5  # outputs per anchor
         self.grid = [torch.zeros(1)] * nl
         self.strides = np.array([8., 16., 32.])
 
-        self.trt = TRTModel(engine_path)
+    def _init_model(self, model_path):
+        self.mode = 'torch'
+        if model_path.endswith('.pth') or model_path.endswith('.pt'):
+            self.mode = 'torch'
+            # self.model = torch.load(model_path, map_location='cpu').eval()
+        elif model_path.endswith('.onnx'):
+            self.mode = 'onnx'
+            self.model = ONNXModel(model_path)
+        elif model_path.endswith('.engine'):
+            self.mode = 'trt'
+            self.model = TRTModel(model_path)
 
-        # warm-up
-        self.trt.run(torch.randn(1, 3, 640, 640).numpy())
+        warmup_data = torch.randn(1, 3, 640, 640).to(self.device)
+        self.model(warmup_data)  # warm-up
+        del warmup_data
 
     def _make_grid(self, nx=20, ny=20):
         yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
@@ -63,17 +79,19 @@ class Detector(object):
         """
         z = []
         for i in range(len(outputs)):
-            outputs[i] = torch.from_numpy(outputs[i])
+            outputs[i] = outputs[i].to(self.device)
             if self.grid[i].shape[2:4] != outputs[i].shape[2:4]:
                 _, _, height, width, _ = outputs[i].shape
-                self.grid[i] = self._make_grid(width, height)
+                self.grid[i] = self._make_grid(width, height).to(outputs[i].device)
             y = outputs[i].sigmoid()
-            y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i]) * self.strides[i]  # xy
+
+            y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i].to(outputs[i].device)) * self.strides[i]  # xy
             y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
             z.append(y.view(1, -1, self.no))
 
         pred = torch.cat(z, 1)
         pred = non_max_suppression(pred, conf_thres=self.conf_thresh, iou_thres=self.iou_thresh)
+
         return pred
 
     def run(self, img):
@@ -84,8 +102,12 @@ class Detector(object):
             dst_list : [(x1,y1,x2,y2,label,conf),...]
         '''
         dst_list = []
+        # pre process
         resize_img = preprocess_img(img)
-        output = self.trt.run(resize_img)
+        resize_img = torch.from_numpy(resize_img).to(self.device)
+        # inference
+        output = self.model(resize_img)
+        # post process
         pred = self.post_process(output)
         for i, det in enumerate(pred):  # detections per image
             if det is not None and len(det):
@@ -115,11 +137,12 @@ def load_img_by_path(path):
 
 
 def main():
-    engine_path = opt.engine_path
+    # get info
+    model_path = opt.model_path
     img_path = opt.img_path
     output_path = opt.output_path
-    onnx_path = opt.onnx_path
     label_path = opt.label_path
+    anchors = opt.anchors
 
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -127,21 +150,26 @@ def main():
     img_list = load_img_by_path(img_path)
 
     detector = Detector(
-        engine_path=engine_path,
+        model_path=model_path,
         label_path=label_path,
+        anchors=anchors,
         conf_thresh=opt.conf_thresh,
         iou_thresh=opt.iou_thresh)
     # Run inference
-    for file in tqdm(img_list):
-        basename = os.path.basename(file)
-        img = cv2.imread(file)
-        dst_list = detector.run(img)
-        for dst in dst_list:
-            with open(os.path.join(output_path, os.path.splitext(basename)[0] + '_trt.txt'), 'a') as f:
-                f.write(('%g, ' * 4 + '\n') % (dst))  # label format
-            label = '%s %.2f' % (dst[4], dst[5])
-            plot_one_box(dst[:4], img, label=label)
-        cv2.imwrite(os.path.join(output_path, basename), img)
+    # test
+    while True:
+        for file in tqdm(img_list):
+            # print(file)
+            basename = os.path.basename(file)
+            img = cv2.imread(file)
+            dst_list = detector.run(img)
+            for dst in dst_list:
+                # print(dst)
+                with open(os.path.join(output_path, os.path.splitext(basename)[0] + '.txt'), 'a+') as f:
+                    f.write(('%s, ' * 6 + '\n') % (dst))  # label format
+                label = '%s %.2f' % (dst[4], dst[5])
+                plot_one_box(dst[:4], img, label=label)
+            cv2.imwrite(os.path.join(output_path, basename), img)
 
 
 if __name__ == '__main__':
