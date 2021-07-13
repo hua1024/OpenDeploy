@@ -104,6 +104,7 @@ class TRTModel(nn.Module):
             if bs_range[0] <= batch_size <= bs_range[1]:
                 if self.profile_index != idx:
                     self.profile_index = idx
+                    # 动态推理需要设定profile idx，为了进行不同的内存分配
                     self.context.active_optimization_profile = idx
 
     @staticmethod
