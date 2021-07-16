@@ -33,3 +33,8 @@ python3 deploy_trt/onnx_to_trt.py --onnx_input weights/5x_best-sim.onnx --engine
 # 注意最小最大尺寸的限制，同时占用的显存是通过设置最大的显存来开辟的
 ```
 
+#### 5.run
+```shell script
+# 参数都在config里面修改
+python3 main.py
+```
