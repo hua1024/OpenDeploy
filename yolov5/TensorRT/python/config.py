@@ -4,6 +4,7 @@
 
 
 class GlobalSetting():
+
     label_path = './coco.names'
     model_path = './weights/yolov5x-simpler.engine'
     # model_path = './weights/yolov5s.pt'

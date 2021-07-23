@@ -11,7 +11,7 @@ import os
 from tqdm import tqdm
 
 from config import opt
-from deploy_trt.slow_trt_inference import TRTModel
+# from deploy_trt.slow_trt_inference import TRTModel
 from deploy_trt.trt_inference import TRTModel
 from deploy_trt.onnx_inference import ONNXModel
 from utils import preprocess_img, non_max_suppression, scale_coords, xyxy2xywh, plot_one_box
@@ -157,19 +157,19 @@ def main():
         iou_thresh=opt.iou_thresh)
     # Run inference
     # test
-    while True:
-        for file in tqdm(img_list):
-            # print(file)
-            basename = os.path.basename(file)
-            img = cv2.imread(file)
-            dst_list = detector.run(img)
-            for dst in dst_list:
-                # print(dst)
-                with open(os.path.join(output_path, os.path.splitext(basename)[0] + '.txt'), 'a+') as f:
-                    f.write(('%s, ' * 6 + '\n') % (dst))  # label format
-                label = '%s %.2f' % (dst[4], dst[5])
-                plot_one_box(dst[:4], img, label=label)
-            cv2.imwrite(os.path.join(output_path, basename), img)
+    # while True:
+    for file in tqdm(img_list):
+        # print(file)
+        basename = os.path.basename(file)
+        img = cv2.imread(file)
+        dst_list = detector.run(img)
+        for dst in dst_list:
+            # print(dst)
+            with open(os.path.join(output_path, os.path.splitext(basename)[0] + '.txt'), 'a+') as f:
+                f.write(('%s, ' * 6 + '\n') % (dst))  # label format
+            label = '%s %.2f' % (dst[4], dst[5])
+            plot_one_box(dst[:4], img, label=label)
+        cv2.imwrite(os.path.join(output_path, basename), img)
 
 
 if __name__ == '__main__':

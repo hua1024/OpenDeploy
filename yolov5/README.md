@@ -1,40 +1,46 @@
-### 简介
->yolov5的tensorrt转换及推理工程
->
+## YOLOV5-Deploy
 
-#### 1. environment
-```shell script
-# tensorrt-7.1.3、torch-1.6、torchvision-0.7.0
-```
+>The Pytorch implementation is [ultralytics/yolov5](https://github.com/ultralytics/yolov5).
 
-#### 2. torch2onnx
-```shell script
-# 将torch的模型转成onnx格式
-# 默认保存在./weights/yolov5s.onnx
-# 注意 opset_version=12
-# 原作者: python3 models/export.py --weights ./weights/yolov5s.pt --img 640 --batch 1
-```
+Currently, we support yolov5  v3.0, v3.1, v4.0.
 
 
-#### 3. onnxsim
-```shell script
-# 去除onnxsim中多余的op操作
-# --dynamic-input-shape 如果输入的batch和size会发生改变，则需要加上
-# input:1,3,640,640 -> 输入的节点名称 : bchw
-python3 -m onnxsim weights/5x_best.onnx weights/5x_best-sim.onnx --input-shape input:1,3,640,640 --dynamic-input-shape
-```
+### [TensorRT](./TensorRT)
+
+##### YOLOV5x
+
+|Model |size |mAP<sup>test<br>0.5:0.95 | Speed 2080Ti<br>(ms) | Params<br>(M) |FLOPs<br>(B)|
+|------|:---:| :---:                   |:---:                 |:---:          | :---:      |
+|YOLOV5x-torch    |640  |51.2      | 17.3 |99.1 |281.9  | 
+|YOLOV5x-trt-cpp  |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5x-trt-cpp-float16  |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5x-trt-cpp-int8  |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5x-trt-python  |640  |39.6      |9.8     |9.0 | 26.8 | 
+|YOLOV5x-trt-python-float16   |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5x-trt-python-int8   |640  |51.2      | 17.3 |99.1 |281.9  |
 
 
-#### 4. onnx2trt
-```shell script
-# trt float16 动态输入
-python3 deploy_trt/onnx_to_trt.py --onnx_input weights/5x_best-sim.onnx --engine_output weights/f16-5x_best-sim.engine --fp16_mode --max_batch_size 1 --dynamic_shape '[[1,3,128,128],[1,3,416,416],[1,3,640,640]]'
+##### YOLOV5s
 
-# 注意最小最大尺寸的限制，同时占用的显存是通过设置最大的显存来开辟的
-```
 
-#### 5.run
-```shell script
-# 参数都在config里面修改
-python3 main.py
-```
+|Model |size |mAP<sup>test<br>0.5:0.95 | Speed 2080Ti<br>(ms) | Params<br>(M) |FLOPs<br>(B)|
+| ------        |:---: | :---:       |:---:     |:---:  | :---: |
+|YOLOV5s-torch  |640  |51.2      | 17.3 |99.1 |281.9  | 
+|YOLOV5s-trt-cpp  |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5s-trt-cpp-float16  |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5s-trt-cpp-int8  |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5s-trt-python  |640  |39.6      |9.8     |9.0 | 26.8 | 
+|YOLOV5s-trt-python-float16   |640  |51.2      | 17.3 |99.1 |281.9  |
+|YOLOV5s-trt-python-int8   |640  |51.2      | 17.3 |99.1 |281.9  |
+
+
+
+### [NCNN](./NCNN)
+
+|Model |size |mAP<sup>test<br>0.5:0.95 | Speed 2080Ti<br>(ms) | Params<br>(M) |FLOPs<br>(B)|
+| ------        |:---: | :---:       |:---:     |:---:  | :---: |
+|YOLOV5s-torch  |640  |39.6      |9.8     |9.0 | 26.8 | 
+|YOLOV5x-torch  |640  |51.2      | 17.3 |99.1 |281.9  | 
+|YOLOV5s-ncnn  |640  |39.6      |9.8     |9.0 | 26.8 | 
+|YOLOV5x-ncnn  |640  |51.2      | 17.3 |99.1 |281.9  |
+
