@@ -2,10 +2,7 @@
 # @Time   : 2021/3/6 10:33
 # @Auto   : zzf-jeff
 
-# other env without trt
 try:
-    import pycuda.driver as cuda
-    import pycuda.autoinit
     import tensorrt as trt
     import torch
 except:
@@ -50,14 +47,11 @@ class TRTModel(nn.Module):
             engine_path (trt.tensorrt.ICudaEngine)
         """
         super(TRTModel, self).__init__()
-        # cfx多线程需要加的限制
-        self.cfx = pycuda.autoinit.context
         self.engine_path = engine_path
         self.logger = trt.Logger(getattr(trt.Logger, 'ERROR'))
 
         ## load engine for engine_path
         self.engine = self.load_engine()
-
         ## gen context
         self.context = self.engine.create_execution_context()
 
@@ -142,6 +136,7 @@ class TRTModel(nn.Module):
             name = self._rename(self.profile_index, name)
             idx = self.engine.get_binding_index(name)
             dtype = torch_dtype_from_trt(self.engine.get_binding_dtype(idx))
+
             bindings[idx % self.total_length] = (
                 inputs[i].to(dtype).contiguous().data_ptr())
 
@@ -158,11 +153,18 @@ class TRTModel(nn.Module):
 
         return outputs, bindings
 
-    def forward(self, input):
+    def _flatten(self, inp):
+        if not isinstance(inp, (tuple, list)):
+            return [inp]
+        out = []
+        for sub_inp in inp:
+            out.extend(self._flatten(sub_inp))
 
-        inputs = [input]
+        return out
+
+    def forward(self, inputs):
+        inputs = self._flatten(inputs)
         batch_size = inputs[0].shape[0]
-
         assert batch_size <= self.engine.max_batch_size, (
             'input batch_size {} is larger than engine max_batch_size {}, '
             'please increase max_batch_size and rebuild engine.'
@@ -174,10 +176,7 @@ class TRTModel(nn.Module):
             self._set_binding_shape(inputs)
 
         outputs, bindings = self._get_bindings(inputs)
-
-        self.cfx.push()
         self.context.execute_async_v2(bindings,
                                       torch.cuda.current_stream().cuda_stream)
-        self.cfx.pop()
 
         return outputs

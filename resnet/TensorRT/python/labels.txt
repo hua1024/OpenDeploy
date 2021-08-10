@@ -1,3 +1,0 @@
-danger
-huge
-small

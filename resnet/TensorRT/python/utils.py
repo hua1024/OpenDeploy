@@ -3,14 +3,12 @@
 # @Auto   : zzf-jeff
 
 import cv2
-import numpy as np
-import torchvision
 import time
 import torch
-import random
+import os
 
 
-def plot_label(x, img, label, line_thickness=None):
+def plot_classify_label(x, img, label, line_thickness=None):
     """
     description: Plots one bounding box on image img,
                  this function comes from YoLov5 project.
@@ -42,41 +40,45 @@ def plot_label(x, img, label, line_thickness=None):
     )
 
 
-def his_imnormalize(img, mean, std, to_rgb=True):
-    # 同步海思用的归一化
-    """Inplace normalize an image with mean and std.
-
-    Args:
-        img (ndarray): Image to be normalized.
-        mean (ndarray): The mean to be used for normalize.
-        std (ndarray): The std to be used for normalize.
-        to_rgb (bool): Whether to convert to rgb.
-
-    Returns:
-        ndarray: The normalized image.
-    """
-    # cv2 inplace normalization does not accept uint8
-    mean = np.array(mean, dtype=np.float32)
-    std = np.array(std, dtype=np.float32)
-    img = img.copy().astype(np.float32)
-    assert img.dtype != np.uint8
-    # mean = np.float64(mean.reshape(1, -1))
-    # stdinv = 1 / np.float64(std.reshape(1, -1))
-    if to_rgb:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # inplace
-        img = img / 255.
-    # cv2.subtract(img, mean, img)  # inplace
-    # cv2.multiply(img, stdinv, img)  # inplace
-    # img /= 255.0
-    return img
+def time_synchronized():
+    # pytorch-accurate time
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    return time.time()
 
 
-def preprocess_img(img, mean, std, to_rgb=True):
-    img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_LINEAR)
-    img = his_imnormalize(img, mean, std, to_rgb)
-    # squeeze channel (224,224,3) --> (1,224,224,3)
-    img = np.expand_dims(img, axis=0)
-    # transpose chanel (1,224,224,3) --> (1,3,224,224)
-    img = img.transpose(0, 3, 1, 2)
-    img = np.array(img, dtype=np.float32, order='C')
-    return img
+def split_batch(one_data_list, batch_size=4):
+    # list split by idx,using to split batch
+    return [one_data_list[i:i + batch_size] for i in range(len(one_data_list)) if i % batch_size == 0]
+
+
+def load_img_data(path):
+    img_formats = ['jpg', 'jpeg', 'png', 'bmp', 'JPEG', 'PNG', 'JPG']  # match img 后缀
+    res_list = []
+    if os.path.isdir(path):
+        for dir_path, dir_names, filenames in os.walk(path):
+            for filename in filenames:
+                temp_path = os.path.join(dir_path, filename)
+                res_list.append(temp_path)
+    elif os.path.isfile(path):
+        res_list.append(path)
+
+    res_list = [x for x in res_list if x.split('.')[-1].lower() in img_formats]
+    return res_list
+
+
+def load_img_data_batch(path, bs=1):
+    img_formats = ['jpg', 'jpeg', 'png', 'bmp', 'JPEG', 'PNG', 'JPG']  # match img 后缀
+    res_list = []
+    if os.path.isdir(path):
+        for dir_path, dir_names, filenames in os.walk(path):
+            for filename in filenames:
+                temp_path = os.path.join(dir_path, filename)
+                res_list.append(temp_path)
+    elif os.path.isfile(path):
+        res_list.append(path)
+
+    res_list = [x for x in res_list if x.split('.')[-1].lower() in img_formats]
+    res_list = split_batch(res_list, batch_size=bs)
+
+    return res_list

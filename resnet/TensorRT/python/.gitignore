@@ -1,4 +1,6 @@
 *.pyc
 weights/*
-*__pycache__/
-output
+__pycache__*
+scripts/*
+output/*
+test_imgs/*
