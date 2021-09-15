@@ -7,7 +7,7 @@ import numpy as np
 import cv2
 
 from deploy_trt.fast_trt_inference import TRTModel
-# from deploy_trt.slow_trt_inference import TRTModel
+# from deploy_trt_back.slow_trt_inference import TRTModel
 from deploy_trt.onnx_inference import ONNXModel
 
 
@@ -17,7 +17,7 @@ class Classifier(object):
 
     """
 
-    def __init__(self, model_path, label_path, img_size=(224,224), conf_thresh=0.1, mean=None, std=None):
+    def __init__(self, model_path, label_path, img_size=(224, 224), conf_thresh=0.1, mean=None, std=None):
 
         super(Classifier, self).__init__()
         self.conf_thresh = conf_thresh
@@ -77,6 +77,17 @@ class Classifier(object):
     def preprocess_img(self, img, mean, std, to_rgb=True):
         img = cv2.resize(img, self.img_size, interpolation=cv2.INTER_LINEAR)
         img = self.his_imnormalize(img, mean, std, to_rgb)
+
+        # f_txt = open("img.txt", "w", encoding="utf-8")
+        # h, w = img.shape[:2]
+        # idx = 1
+        # for i in range(h):
+        #     f_txt.write((str(idx)) + ":" + "\n")
+        #     for j in range(w):
+        #         f_txt.write(str(img[i][j]) + " ")
+        #     idx += 1
+        #     f_txt.write("\n")
+
         # squeeze channel (224,224,3) --> (1,224,224,3)
         img = np.expand_dims(img, axis=0)
         # transpose chanel (1,224,224,3) --> (1,3,224,224)

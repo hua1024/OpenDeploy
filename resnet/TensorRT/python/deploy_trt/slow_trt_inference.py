@@ -39,10 +39,15 @@ class TRTModel():
         ## create context for cuda engine
         self.context = self.engine.create_execution_context()
         self.batch_size_ranges = []
-        ## get input/output cuda swap address use idx
+        ## get input/deploy_trtoutput cuda swap address use idx
         self.input_binding_idxs, self.output_binding_idxs = self._get_binding_idxs()
         ## get network input/output name
         self.input_names, self.output_names = self.get_input_output_name()
+
+    def __del__(self):
+        del self.engine
+        del self.stream
+        del self.context
 
     def load_engine(self):
         '''Load cuda engine

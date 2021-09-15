@@ -69,6 +69,10 @@ class TRTModel(nn.Module):
         # default profile index is 0
         self.profile_index = 0
 
+    def __del__(self):
+        del self.engine
+        del self.context
+
     def load_engine(self):
         '''Load cuda engine
 

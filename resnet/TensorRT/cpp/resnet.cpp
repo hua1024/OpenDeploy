@@ -42,7 +42,28 @@ const char *OUTPUT_BLOB_NAME = "identity_probs";
 static Logger gLogger;
 
 
-float *blobFromImage(cv::Mat &img)
+float *blobFromImage(cv::Mat &img, std::vector<float> &mean, std::vector<float> &std)
+{
+    cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+    float *blob = new float[img.total() * 3];
+    int channels = 3;
+    int img_h = 224;
+    int img_w = 224;
+    for (size_t c = 0; c < channels; c++)
+    {
+        for (size_t h = 0; h < img_h; h++)
+        {
+            for (size_t w = 0; w < img_w; w++)
+            {
+                blob[c * img_w * img_h + h * img_w + w] =
+                        (((float) img.at<cv::Vec3b>(h, w)[c]) / 255.0f - mean[c]) / std[c];
+            }
+        }
+    }
+    return blob;
+}
+
+float *batchBlobFromImage(cv::Mat &img)
 {
     cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
 
@@ -149,7 +170,7 @@ int main(int argc, char **argv)
     char *trtModelStream{nullptr};
     size_t size{0};
 
-    if (argc == 4 && std::string(argv[2]) == "-i")
+    if (argc == 5 && std::string(argv[3]) == "-i")
     {
         const std::string engine_file_path{argv[1]};
         std::ifstream file(engine_file_path, std::ios::binary);
@@ -167,11 +188,29 @@ int main(int argc, char **argv)
     {
         std::cerr << "arguments not right!" << std::endl;
         std::cerr << "Then use the following command:" << std::endl;
-        std::cerr << "./resnet ../model_trt.engine -i ../../../assets/dog.jpg " << std::endl;
+        std::cerr << "./resnet ../weights/xx.engine ../weights/labels.txt -i ../imgs/1.jpg " << std::endl;
         return -1;
     }
 
-    const std::string input_image_path{argv[3]};
+    const std::string input_image_path{argv[4]};
+    const std::string label_path{argv[2]};
+    // read label txt info
+    ifstream labelFile;
+    std::string line;
+    std::vector<std::string> labels;
+    labelFile.open(label_path);
+    if (labelFile)
+    {
+        while (getline(labelFile, line))
+        {
+            labels.push_back(line);
+        }
+    } else
+    {
+        printf("no this file");
+    }
+
+    labelFile.close();
 
     IRuntime *runtime = createInferRuntime(gLogger);
     assert(runtime != nullptr);
@@ -181,8 +220,11 @@ int main(int argc, char **argv)
     assert(context != nullptr);
     delete[] trtModelStream;
 
-    static float prob[2 * OUTPUT_SIZE];
-
+    static float prob[OUTPUT_SIZE];
+    std::vector<float> mean = {0.00, 0.0, 0.0};
+    std::vector<float> std = {1.0, 1.0, 1.0};
+//    std::vector<float> mean = {0.485, 0.456, 0.406};
+//    std::vector<float> std = {0.229, 0.224, 0.225};
     cv::Mat img = cv::imread(input_image_path);
     int img_w = img.cols;
     int img_h = img.rows;
@@ -190,31 +232,21 @@ int main(int argc, char **argv)
     cv::Mat resize_img;
     cv::resize(img, resize_img, cv::Size(224, 224), cv::INTER_LINEAR);
 
-
     float *blob;
-    blob = blobFromImage(resize_img);
+    blob = blobFromImage(resize_img, mean, std);
 
 //    for (int j = 0; j < 224 * 224 * 3; j++)
 //    {
 //        std::cout << blob[j] << std::endl;
 //    }
+    auto start = std::chrono::system_clock::now();
+    doInference(*context, blob, prob, 1);
+    auto end = std::chrono::system_clock::now();
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 
-//    std::cout << sizeof(&blob) / sizeof(blob[0]) << "sss" << std::endl;
-
-    for (size_t i = 0; i < 10; i++)
-    {
-        auto start = std::chrono::system_clock::now();
-        doInference(*context, blob, prob, 2);
-        auto end = std::chrono::system_clock::now();
-        std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
-        std::cout << "\nOutput:\n\n";
-        for (unsigned int i = 0; i < 6; i++)
-        {
-            std::cout << prob[i] << ", ";
-        }
-
-    }
-
+    float score = *max_element(prob, prob + 3);
+    long classIdx = max_element(prob, prob + 3) - prob;
+    printf("%s\n%.4f\n", labels[int(classIdx)].c_str(), score);
 
     context->destroy();
     engine->destroy();

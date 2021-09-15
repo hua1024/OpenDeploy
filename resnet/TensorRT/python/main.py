@@ -38,7 +38,9 @@ def main():
         preds = classifier.run(inputs)
         for pred, file in zip(preds, files):
             basename = os.path.basename(file)
-            label = '%s %.2f' % (pred["pred_label"], pred["pred_score"])
+            # print(pred)
+            label = '%s %.3f' % (pred["pred_label"], pred["pred_score"])
+            print(label)
             with open(os.path.join(output_path, os.path.splitext(basename)[0] + '.txt'), 'w') as f:
                 f.write(('%s' + '\n') % (label))  # label format
             img = cv2.imread(file)

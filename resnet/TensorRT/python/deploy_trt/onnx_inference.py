@@ -30,6 +30,11 @@ class ONNXModel(nn.Module):
         self.input_name = self.get_input_name(self.onnx_session)
         self.output_name = self.get_output_name(self.onnx_session)
 
+    def __del__(self):
+        del self.onnx_session
+        del self.input_name
+        del self.output_name
+
     def to_numpy(self, data):
         if not isinstance(data, np.ndarray):
             if data.requires_grad:
