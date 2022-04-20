@@ -235,10 +235,6 @@ int main(int argc, char **argv)
     float *blob;
     blob = blobFromImage(resize_img, mean, std);
 
-//    for (int j = 0; j < 224 * 224 * 3; j++)
-//    {
-//        std::cout << blob[j] << std::endl;
-//    }
     auto start = std::chrono::system_clock::now();
     doInference(*context, blob, prob, 1);
     auto end = std::chrono::system_clock::now();
